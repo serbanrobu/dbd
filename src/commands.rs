@@ -1,12 +1,14 @@
-use crate::settings::Database;
+use crate::Database;
 use anyhow::{Context, Result};
 use async_std::io;
-use async_std::process::{Child, Command, Stdio};
+use async_std::io::prelude::*;
+use async_std::process::{Child, ChildStdout, Command, Stdio};
 use async_std::task;
 
-pub fn mysqldump(db: &Database) -> Result<Child> {
-    let mut cmd = Command::new("mysqldump");
-    cmd.args(&[
+pub type DumpStderr = Box<dyn Read + Send + Sync + Unpin>;
+
+pub fn mysqldump(db: &Database) -> Result<(Child, ChildStdout, DumpStderr)> {
+    let args = [
         "-h",
         &db.host,
         "-P",
@@ -17,15 +19,27 @@ pub fn mysqldump(db: &Database) -> Result<Child> {
         "-v",
         &db.dbname,
         "--single-transaction",
-    ]);
+    ];
+
+    let dump_schema = Command::new("mysqldump")
+        .args(&args)
+        .arg("--no-data")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .context("failed to run mysqldump")?;
+
+    let mut cmd = Command::new("mysqldump");
 
     if let Some(ref tables) = db.exclude_table_data {
         for table in tables {
-            cmd.args(&["--ignore-table-data", &format!("{}.{}", db.dbname, table)]);
+            cmd.args(&["--ignore-table", &format!("{}.{}", db.dbname, table)]);
         }
     }
 
-    let mut mysqldump = cmd
+    let dump_data = cmd
+        .args(&args)
+        .arg("--no-create-info")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -34,21 +48,21 @@ pub fn mysqldump(db: &Database) -> Result<Child> {
     let mut gzip = Command::new("gzip")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
         .spawn()
         .context("failed to run gzip")?;
 
-    gzip.stderr = mysqldump.stderr;
-
     task::spawn(io::copy(
-        mysqldump.stdout.take().unwrap(),
+        dump_schema.stdout.unwrap().chain(dump_data.stdout.unwrap()),
         gzip.stdin.take().unwrap(),
     ));
 
-    Ok(gzip)
+    let gzip_stdout = gzip.stdout.take().unwrap();
+    let stderr = dump_schema.stderr.unwrap().chain(dump_data.stderr.unwrap());
+
+    Ok((gzip, gzip_stdout, Box::new(stderr)))
 }
 
-pub fn pg_dump(db: &Database) -> Result<Child> {
+pub fn pg_dump(db: &Database) -> Result<(Child, ChildStdout, DumpStderr)> {
     let mut cmd = Command::new("pg_dump");
     cmd.args(&[
         "-d",
@@ -70,9 +84,15 @@ pub fn pg_dump(db: &Database) -> Result<Child> {
         }
     }
 
-    cmd.env("PGPASSWORD", &db.password)
+    let mut child = cmd
+        .env("PGPASSWORD", &db.password)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .context("failed to run pg_dump")
+        .context("failed to run pg_dump")?;
+
+    let stdout = child.stdout.take().unwrap();
+    let stderr = child.stderr.take().unwrap();
+
+    Ok((child, stdout, Box::new(stderr)))
 }

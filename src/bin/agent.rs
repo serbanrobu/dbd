@@ -4,8 +4,8 @@ use async_std::sync::Arc;
 use async_std::task;
 use dbd::auth::AuthMiddleware;
 use dbd::commands::{mysqldump, pg_dump};
-use dbd::settings::{configure, Connection};
-use dbd::state::State;
+use dbd::settings::configure;
+use dbd::{Connection, State};
 use std::path::PathBuf;
 use std::time::Duration;
 use structopt::StructOpt;
@@ -40,7 +40,7 @@ async fn main() -> Result<()> {
                 Error::from_str(StatusCode::NotFound, format!("no database {}", db_id))
             })?;
 
-            let mut child = match db.connection {
+            let (child, stdout, stderr) = match db.connection {
                 Connection::Postgres => pg_dump(db)?,
                 Connection::MySql => mysqldump(db)?,
             };
@@ -49,11 +49,11 @@ async fn main() -> Result<()> {
             let cmd_id = Uuid::new_v4();
 
             let mut stdouts = state.stdouts.lock().await;
-            stdouts.insert(cmd_id, child.stdout.take().unwrap());
+            stdouts.insert(cmd_id, stdout);
             drop(stdouts);
 
             let mut stderrs = state.stderrs.lock().await;
-            stderrs.insert(cmd_id, child.stderr.take().unwrap());
+            stderrs.insert(cmd_id, stderr);
             drop(stderrs);
 
             let mut cmds = state.commands.lock().await;
