@@ -1,0 +1,22 @@
+[package]
+name = "dbd"
+version = "0.1.0"
+authors = ["Șerban Robu <serbanrobu@protonmail.com>"]
+edition = "2018"
+
+[[bin]]
+path = "src/bin/agent.rs"
+name = "dbd-agent"
+
+[dependencies]
+anyhow = "1.0.38"
+async-std = { version = "1.9.0", features = ["attributes"] }
+config = "0.10.1"
+console = "0.14.0"
+dirs = "3.0.1"
+indicatif = "0.15.0"
+serde = { version = "1.0.123", features = ["derive"] }
+structopt = "0.3.21"
+surf = "2.1.0"
+tide = "0.16.0"
+uuid = { version = "0.8.2", features = ["v4"] }

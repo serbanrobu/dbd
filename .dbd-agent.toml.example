@@ -1,0 +1,21 @@
+address = "127.0.0.1"
+port = 8080
+api_key = "secret"
+
+[databases.db_1]
+connection = "postgres"
+host = "localhost"
+port = 5432
+dbname = "db_1"
+username = "root"
+password = "secret"
+exclude_table_data = ["table_1", "table_2"]
+
+[databases.db_2]
+connection = "mysql"
+host = "localhost"
+port = 3306
+dbname = "db_2"
+username = "root"
+password = "secret"
+exclude_table_data = ["table_1", "table_2"]
