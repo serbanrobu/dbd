@@ -19,6 +19,10 @@ struct Opt {
     /// Key for accessing agent's API
     #[structopt(short = "k", long, env, hide_env_values = true)]
     api_key: String,
+    /// Do not dump the specified table data. To specify more than one table to
+    /// ignore, use comma separator, e.g. --exclude-table-data=table_1,table_2.
+    #[structopt(long, env)]
+    exclude_table_data: Option<String>,
 }
 
 static PAPER: Emoji<'_, '_> = Emoji("📃 ", "");
@@ -28,9 +32,14 @@ static SPARKLE: Emoji<'_, '_> = Emoji("✨ ", ":-)");
 async fn main() -> Result<()> {
     let opts = Opt::from_args();
     let started = Instant::now();
-    let url = opts
+    let mut url = opts
         .url
         .join(&format!("databases/{}/dump", opts.database_id))?;
+
+    if let Some(ref tables) = opts.exclude_table_data {
+        url.query_pairs_mut()
+            .append_pair("exclude_table_data", tables);
+    }
 
     let mut res = surf::get(url).header("x-api-key", &opts.api_key).await?;
     let body = res.body_string().await?;

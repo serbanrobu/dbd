@@ -20,7 +20,6 @@ pub struct Database {
     pub dbname: String,
     pub username: String,
     pub password: String,
-    pub exclude_table_data: Option<Vec<String>>,
 }
 
 #[derive(Deserialize, Debug, Clone)]

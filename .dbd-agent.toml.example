@@ -9,7 +9,6 @@ port = 5432
 dbname = "db_1"
 username = "root"
 password = "secret"
-exclude_table_data = ["table_1", "table_2"]
 
 [databases.db_2]
 connection = "mysql"
@@ -18,4 +17,3 @@ port = 3306
 dbname = "db_2"
 username = "root"
 password = "secret"
-exclude_table_data = ["table_1", "table_2"]

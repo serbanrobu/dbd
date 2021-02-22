@@ -5,7 +5,7 @@ use async_std::task;
 use dbd::auth::AuthMiddleware;
 use dbd::commands::{mysqldump, pg_dump};
 use dbd::settings::configure;
-use dbd::{Connection, State};
+use dbd::{Connection, DumpQuery, State};
 use std::path::PathBuf;
 use std::time::Duration;
 use structopt::StructOpt;
@@ -39,10 +39,11 @@ async fn main() -> Result<()> {
             let db = req.state().settings.databases.get(db_id).ok_or_else(|| {
                 Error::from_str(StatusCode::NotFound, format!("no database {}", db_id))
             })?;
+            let DumpQuery { exclude_table_data } = req.query()?;
 
             let (child, stdout, stderr) = match db.connection {
-                Connection::Postgres => pg_dump(db)?,
-                Connection::MySql => mysqldump(db)?,
+                Connection::Postgres => pg_dump(db, exclude_table_data)?,
+                Connection::MySql => mysqldump(db, exclude_table_data)?,
             };
 
             let state = req.state();
@@ -75,7 +76,6 @@ async fn main() -> Result<()> {
 
                 let mut cmds = state.commands.lock().await;
                 cmds.remove(&cmd_id);
-                drop(cmds);
             });
 
             Ok(cmd_id.to_string())

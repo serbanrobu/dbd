@@ -7,7 +7,10 @@ use async_std::task;
 
 pub type DumpStderr = Box<dyn Read + Send + Sync + Unpin>;
 
-pub fn mysqldump(db: &Database) -> Result<(Child, ChildStdout, DumpStderr)> {
+pub fn mysqldump(
+    db: &Database,
+    exclude_table_data: Option<Vec<String>>,
+) -> Result<(Child, ChildStdout, DumpStderr)> {
     let args = [
         "-h",
         &db.host,
@@ -31,7 +34,7 @@ pub fn mysqldump(db: &Database) -> Result<(Child, ChildStdout, DumpStderr)> {
 
     let mut cmd = Command::new("mysqldump");
 
-    if let Some(ref tables) = db.exclude_table_data {
+    if let Some(tables) = exclude_table_data {
         for table in tables {
             cmd.args(&["--ignore-table", &format!("{}.{}", db.dbname, table)]);
         }
@@ -62,7 +65,10 @@ pub fn mysqldump(db: &Database) -> Result<(Child, ChildStdout, DumpStderr)> {
     Ok((gzip, gzip_stdout, Box::new(stderr)))
 }
 
-pub fn pg_dump(db: &Database) -> Result<(Child, ChildStdout, DumpStderr)> {
+pub fn pg_dump(
+    db: &Database,
+    exclude_table_data: Option<Vec<String>>,
+) -> Result<(Child, ChildStdout, DumpStderr)> {
     let mut cmd = Command::new("pg_dump");
     cmd.args(&[
         "-d",
@@ -78,7 +84,7 @@ pub fn pg_dump(db: &Database) -> Result<(Child, ChildStdout, DumpStderr)> {
         "9",
     ]);
 
-    if let Some(ref tables) = db.exclude_table_data {
+    if let Some(tables) = exclude_table_data {
         for table in tables {
             cmd.args(&["--exclude-table-data", &table]);
         }
