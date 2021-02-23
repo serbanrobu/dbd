@@ -94,3 +94,28 @@ docker run --rm -it --network host \
   -v $HOME/.dbd-agent.toml:/root/.dbd-agent.toml \
   dbd-agent -h
 ```
+
+## MUSL for fully static binaries
+
+Check out [rust-musl-builder](https://github.com/emk/rust-musl-builder), a
+Docker container for easily building static Rust binaries.
+
+You can set a bash alias like this:
+
+```bash
+alias rust-musl-builder='docker run --rm -it -v "$(pwd)":/home/rust/src ekidd/rust-musl-builder'
+```
+
+And build the binaries like so:
+
+**Agent:**
+
+```sh
+rust-musl-builder cargo build --release --bin dbd-agent
+```
+
+**Client:**
+
+```sh
+rust-musl-builder cargo build --release --bin dbd
+```
