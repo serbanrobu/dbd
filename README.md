@@ -7,22 +7,32 @@ Client for fetching database dumps
 **Build:**
 
 ```sh
-cargo build --release --bin dbd
+cargo build --release -p dbd
 ```
+
+**Setup (optional):**
+
+Copy _dbd/Config.toml.example_ file to _$HOME/.dbd.toml_ and configure it.
 
 **Help:**
 
 ```txt
 USAGE:
-    dbd [OPTIONS] <database-id> --api-key <api-key> --url <url>
+    dbd [OPTIONS] <database-id>
 
 FLAGS:
     -h, --help       Prints help information
     -V, --version    Prints version information
 
 OPTIONS:
+    -a, --agent-id <agent-id>
+            Agent ID from configuration. Defaults to database ID if the ids
+            match [env: AGENT_ID=]
+
     -k, --api-key <api-key>                          Key for accessing agent's
     API [env: API_KEY]
+    -c, --config <config>                            Config file name. Defaults
+    to $HOME/.dbd.toml [env: CONFIG=]
         --exclude-table-data <exclude-table-data>
             Do not dump the specified table data. To specify more than one
             table to ignore, use comma separator, e.g.
@@ -39,13 +49,13 @@ Agent for serving database dumps
 
 **Setup:**
 
-Copy _.dbd-agent.toml.example_ file to _$HOME/.dbd-agent.toml_ and configure
-it.
+Copy _dbd-agent/Config.toml.example_ file to _$HOME/.dbd-agent.toml_ and
+configure it.
 
 **Build:**
 
 ```sh
-cargo build --release --bin dbd-agent
+cargo build --release -p dbd-agent
 ```
 
 **Help:**
@@ -59,7 +69,7 @@ FLAGS:
     -V, --version    Prints version information
 
 OPTIONS:
-    -c, --config <config>    Config file name. Defaults to $HOME/.dbd-agent.*
+    -c, --config <config>    Config file name. Defaults to $HOME/.dbd-agent.toml
     [env: CONFIG=]
 ```
 
@@ -70,13 +80,18 @@ OPTIONS:
 **Build:**
 
 ```sh
+cd dbd
 docker build -t dbd .
 ```
 
 **Help:**
 
 ```sh
-docker run --rm -i --network host --env-file .env dbd -h
+docker run --rm -i \
+  --env-file .env \
+  --network host \
+  -v $HOME/.dbd.toml:/root/.dbd.toml \
+  dbd -h
 ```
 
 ### dbd-agent container
@@ -84,13 +99,16 @@ docker run --rm -i --network host --env-file .env dbd -h
 **Build:**
 
 ```sh
-docker build -t dbd-agent -f Agent.Dockerfile .
+cd dbd-agent
+docker build -t dbd-agent .
 ```
 
 **Help:**
 
 ```sh
-docker run --rm -it --network host \
+docker run --rm -it \
+  --env-file .env \
+  --network host \
   -v $HOME/.dbd-agent.toml:/root/.dbd-agent.toml \
   dbd-agent -h
 ```
@@ -111,11 +129,11 @@ And build the binaries like so:
 **Agent:**
 
 ```sh
-rust-musl-builder cargo build --release --bin dbd-agent
+rust-musl-builder cargo build --release -p dbd-agent
 ```
 
 **Client:**
 
 ```sh
-rust-musl-builder cargo build --release --bin dbd
+rust-musl-builder cargo build --release -p dbd
 ```

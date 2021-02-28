@@ -2,29 +2,17 @@ use anyhow::Context;
 use async_std::io::{self, BufReader};
 use async_std::sync::Arc;
 use async_std::task;
-use dbd::auth::AuthMiddleware;
-use dbd::commands::{mysqldump, pg_dump};
-use dbd::settings::configure;
-use dbd::{Connection, DumpQuery, State};
-use std::path::PathBuf;
+use dbd_agent::{configure, mysqldump, pg_dump, AuthMiddleware, Connection, DumpQuery, Opt, State};
 use std::time::Duration;
 use structopt::StructOpt;
 use tide::utils::After;
 use tide::{Body, Error, Request, Response, Result, StatusCode};
 use uuid::Uuid;
 
-/// Agent for serving database dumps
-#[derive(StructOpt)]
-struct Opt {
-    /// Config file name. Defaults to $HOME/.dbd-agent.*
-    #[structopt(short, long, env, parse(from_os_str))]
-    config: Option<PathBuf>,
-}
-
 #[async_std::main]
 async fn main() -> Result<()> {
-    let opts = Opt::from_args();
-    let settings = configure(opts.config)?;
+    let opt = Opt::from_args();
+    let settings = configure(opt.config)?;
     let addr = format!("{}:{}", settings.address, settings.port);
     let state = Arc::new(State::new(settings));
 

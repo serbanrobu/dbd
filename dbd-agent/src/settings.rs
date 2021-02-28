@@ -34,7 +34,7 @@ pub type Databases = HashMap<String, Database>;
 pub fn configure(path: Option<PathBuf>) -> Result<Settings, ConfigError> {
     let mut settings = Config::default();
     settings.merge(File::with_name(
-        path.or_else(|| home_dir().map(|h| h.join(".dbd-agent")))
+        path.or_else(|| home_dir().map(|h| h.join(".dbd-agent.toml")))
             .unwrap()
             .to_str()
             .unwrap(),

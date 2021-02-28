@@ -1,0 +1,7 @@
+[agents.agent_1]
+url = "http://localhost"
+api_key = "secret"
+
+[agents.agent_2]
+url = "http://localhost:8080"
+api_key = "secret"
