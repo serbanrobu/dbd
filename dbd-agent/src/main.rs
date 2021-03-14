@@ -1,132 +1,52 @@
 use anyhow::Context;
-use async_std::io::{self, BufReader};
-use async_std::sync::Arc;
-use async_std::task;
-use dbd_agent::{configure, mysqldump, pg_dump, AuthMiddleware, Connection, DumpQuery, Opt, State};
-use std::time::Duration;
+use async_std::io::BufReader;
+use dbd_agent::{configure, encode, mysqldump, pg_dump};
+use dbd_agent::{AuthMiddleware, ConnectionKind, DumpQuery, Opt, Settings};
 use structopt::StructOpt;
 use tide::utils::After;
 use tide::{Body, Error, Request, Response, Result, StatusCode};
-use uuid::Uuid;
+use tokio_util::compat::TokioAsyncReadCompatExt;
+
+async fn dump(req: Request<Settings>) -> Result<Body> {
+    let conn_id = req.param("connection_id")?;
+    let conn = req
+        .state()
+        .connections
+        .get(conn_id)
+        .with_context(|| format!("no database connection {}", conn_id))
+        .map_err(|e| Error::new(StatusCode::NotFound, e))?;
+
+    let dbname = req
+        .param("dbname")
+        .ok()
+        .or(conn.dbname.as_ref().map(String::as_str))
+        .context("no database name provided")
+        .map_err(|e| Error::new(StatusCode::NotFound, e))?;
+
+    let DumpQuery { exclude_table_data } = req.query()?;
+    let read = match conn.kind {
+        ConnectionKind::Postgres => encode(pg_dump(conn, dbname, exclude_table_data)?),
+        ConnectionKind::MySql => encode(mysqldump(conn, dbname, exclude_table_data)?),
+    };
+
+    Ok(Body::from_reader(BufReader::new(read.compat()), None))
+}
 
 #[async_std::main]
 async fn main() -> Result<()> {
     let opt = Opt::from_args();
     let settings = configure(opt.config)?;
     let addr = format!("{}:{}", settings.address, settings.port);
-    let state = Arc::new(State::new(settings));
 
     tide::log::start();
-    let mut app = tide::with_state(state.clone());
+    let mut app = tide::with_state(settings);
 
     app.with(AuthMiddleware);
-
-    app.at("/databases/:id/dump")
-        .get(|req: Request<Arc<State>>| async move {
-            let db_id = req.param("id")?;
-            let db = req.state().settings.databases.get(db_id).ok_or_else(|| {
-                Error::from_str(StatusCode::NotFound, format!("no database {}", db_id))
-            })?;
-            let DumpQuery { exclude_table_data } = req.query()?;
-
-            let (child, stdout, stderr) = match db.connection {
-                Connection::Postgres => pg_dump(db, exclude_table_data)?,
-                Connection::MySql => mysqldump(db, exclude_table_data)?,
-            };
-
-            let state = req.state();
-            let cmd_id = Uuid::new_v4();
-
-            let mut stdouts = state.stdouts.lock().await;
-            stdouts.insert(cmd_id, stdout);
-            drop(stdouts);
-
-            let mut stderrs = state.stderrs.lock().await;
-            stderrs.insert(cmd_id, stderr);
-            drop(stderrs);
-
-            let mut cmds = state.commands.lock().await;
-            cmds.insert(cmd_id, child);
-            drop(cmds);
-
-            task::spawn(async move {
-                task::sleep(Duration::from_secs(5)).await;
-
-                let state = req.state();
-
-                let mut stdouts = state.stdouts.lock().await;
-                stdouts.remove(&cmd_id);
-                drop(stdouts);
-
-                let mut stderrs = state.stderrs.lock().await;
-                stderrs.remove(&cmd_id);
-                drop(stderrs);
-
-                let mut cmds = state.commands.lock().await;
-                cmds.remove(&cmd_id);
-            });
-
-            Ok(cmd_id.to_string())
-        });
-
-    app.at("/commands/:id/status")
-        .get(|req: Request<Arc<State>>| async move {
-            let id = req.param("id")?.parse::<Uuid>()?;
-
-            let mut cmds = req.state().commands.lock().await;
-            let mut cmd = cmds
-                .remove(&id)
-                .with_context(|| format!("no dump command {}", id))?;
-
-            drop(cmds);
-
-            let status = cmd.status().await?;
-            let code = status
-                .code()
-                .with_context(|| format!("dump command {} was interrupted", id))?;
-
-            Ok(code.to_string())
-        });
-
-    app.at("/commands/:id/stdout")
-        .get(|req: Request<Arc<State>>| async move {
-            let id = req.param("id")?.parse::<Uuid>()?;
-
-            let mut stdouts = req.state().stdouts.lock().await;
-            let stdout = stdouts
-                .remove(&id)
-                .with_context(|| format!("no dump stdout {}", id))?;
-
-            drop(stdouts);
-
-            let reader = BufReader::new(stdout);
-            let body = Body::from_reader(reader, None);
-            Ok(body)
-        });
-
-    app.at("/commands/:id/stderr")
-        .get(|req: Request<Arc<State>>| async move {
-            let id = req.param("id")?.parse::<Uuid>()?;
-
-            let mut stderrs = req.state().stderrs.lock().await;
-            let stderr = stderrs
-                .remove(&id)
-                .with_context(|| format!("no dump stderr {}", id))?;
-
-            drop(stderrs);
-
-            let reader = BufReader::new(stderr);
-            let body = Body::from_reader(reader, None);
-            Ok(body)
-        });
-
+    app.at("/dump/:connection_id/").get(dump);
+    app.at("/dump/:connection_id/:dbname").get(dump);
     app.with(After(|mut res: Response| async {
-        if let Some(err) = res.downcast_error::<io::Error>() {
-            let msg = err.to_string();
-            res.set_body(msg);
-        } else if let Some(err) = res.downcast_error::<String>() {
-            let msg = err.to_owned();
-            res.set_body(msg);
+        if let Some(err) = res.take_error() {
+            res.set_body(err.to_string());
         }
 
         Ok(res)

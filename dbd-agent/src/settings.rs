@@ -9,27 +9,25 @@ pub struct Settings {
     pub api_key: String,
     pub port: u16,
     pub address: String,
-    pub databases: Databases,
+    pub connections: HashMap<String, Connection>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
-pub struct Database {
-    pub connection: Connection,
+pub struct Connection {
+    pub kind: ConnectionKind,
     pub host: String,
     pub port: u16,
-    pub dbname: String,
     pub username: String,
     pub password: String,
+    pub dbname: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "lowercase")]
-pub enum Connection {
+pub enum ConnectionKind {
     Postgres,
     MySql,
 }
-
-pub type Databases = HashMap<String, Database>;
 
 pub fn configure(path: Option<PathBuf>) -> Result<Settings, ConfigError> {
     let mut settings = Config::default();

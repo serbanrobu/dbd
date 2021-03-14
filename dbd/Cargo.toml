@@ -7,11 +7,15 @@ edition = "2018"
 [dependencies]
 console = "0.14.0"
 indicatif = "0.15.0"
-surf = "2.1.0"
-async-std = { version = "1.9.0", features = ["attributes", "unstable"] }
+surf = "2.2.0"
+async-std = { version = "1.9.0", features = ["attributes"] }
 config = { version = "0.10.1", default-features = false, features = ["toml"] }
 dirs = "3.0.1"
-serde = { version = "1.0.123", features = ["derive"] }
+serde = { version = "1.0.124", features = ["derive"] }
 structopt = "0.3.21"
-uuid = { version = "0.8.2", features = ["v4"] }
 anyhow = "1.0.38"
+tokio = "1.2.0"
+tokio-util = { version = "0.6.3", features = ["compat"] }
+async-bincode = "0.6.1"
+futures = "0.3.13"
+dbd-agent = { path = "../dbd-agent" }

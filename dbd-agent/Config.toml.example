@@ -2,18 +2,18 @@ address = "127.0.0.1"
 port = 8080
 api_key = "secret"
 
-[databases.db_1]
-connection = "postgres"
+[connections.conn_1]
+kind = "postgres"
 host = "localhost"
 port = 5432
-dbname = "db_1"
+dbname = "dbname_1" # optional
 username = "root"
 password = "secret"
 
-[databases.db_2]
-connection = "mysql"
+[connections.conn_2]
+kind = "mysql"
 host = "localhost"
 port = 3306
-dbname = "db_2"
+dbname = "dbname_2" # optional
 username = "root"
 password = "secret"

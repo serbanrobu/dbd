@@ -1,14 +1,19 @@
 use anyhow::{bail, Context, Error, Result};
+use async_bincode::AsyncBincodeReader;
 use async_std::prelude::*;
-use async_std::{eprintln, io, process, task};
+use async_std::sync::Arc;
+use async_std::task;
 use console::style;
 use dbd::emoji::{PAPER, SPARKLE};
 use dbd::{configure, Agent, Opt};
+use dbd_agent::Frame;
 use indicatif::{HumanBytes, HumanDuration, ProgressBar, ProgressStyle};
 use std::time::Instant;
+use std::{io, process};
 use structopt::StructOpt;
 use surf::StatusCode;
-use uuid::Uuid;
+use tokio::io::{duplex, AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio_util::compat::FuturesAsyncReadCompatExt;
 
 #[async_std::main]
 async fn main() -> Result<()> {
@@ -26,7 +31,7 @@ async fn main() -> Result<()> {
         ),
         _ => settings
             .as_ref()
-            .map(|s| s.agents.get(&opt.database_id))
+            .map(|s| s.agents.get(&opt.connection_id))
             .flatten(),
     };
     let agent = match agent {
@@ -40,9 +45,11 @@ async fn main() -> Result<()> {
         },
     };
 
-    let mut url = agent
-        .url
-        .join(&format!("databases/{}/dump", opt.database_id))?;
+    let mut url = agent.url.join(&format!(
+        "dump/{}/{}",
+        opt.connection_id,
+        opt.dbname.as_ref().map(String::as_str).unwrap_or("")
+    ))?;
 
     if let Some(ref tables) = opt.exclude_table_data {
         url.query_pairs_mut()
@@ -53,79 +60,68 @@ async fn main() -> Result<()> {
         .header("x-api-key", &agent.api_key)
         .await
         .map_err(Error::msg)?;
-    let body = res.body_string().await.map_err(Error::msg)?;
-    let cmd_id = match res.status() {
-        StatusCode::Ok => body.parse::<Uuid>()?,
-        _ => bail!(body),
-    };
 
-    let base_url = agent.url.join(&format!("commands/{}/", cmd_id))?;
+    if res.status() != StatusCode::Ok {
+        let msg = res.body_string().await.map_err(Error::msg)?;
+        bail!(msg);
+    }
 
-    let url = base_url.join("stdout")?;
-    let req = surf::get(url).header("x-api-key", &agent.api_key);
-    let t1 = task::spawn(async move {
-        let mut res = req.await.map_err(Error::msg)?;
-        if res.status() != StatusCode::Ok {
-            let msg = res.body_string().await.map_err(Error::msg)?;
-            bail!(msg);
-        }
-
-        let total = io::copy(res, io::stdout()).await?;
-        Ok(total)
-    });
+    let mut stream = AsyncBincodeReader::from(res.compat());
+    let mut total = 0;
 
     console::set_colors_enabled(true);
 
-    let url = base_url.join("stderr")?;
-    let req = surf::get(url).header("x-api-key", &agent.api_key);
-    let t2 = task::spawn(async move {
-        let mut res = req.await.map_err(Error::msg)?;
-        if res.status() != StatusCode::Ok {
-            let msg = res.body_string().await.map_err(Error::msg)?;
-            bail!(msg);
+    let pb = Arc::new(ProgressBar::new_spinner());
+    pb.enable_steady_tick(120);
+    pb.set_prefix(&PAPER.to_string());
+    pb.set_message("Dumping...");
+    pb.set_style(
+        ProgressStyle::default_spinner()
+            .template("{prefix}{msg} {spinner:.magenta} {bytes:.cyan} ({bytes_per_sec:.dim}) [{elapsed_precise:.yellow}]"),
+    );
+
+    let (reader, mut writer) = duplex(1024);
+    let pb2 = pb.clone();
+    let handle = task::spawn(async move {
+        let mut lines = BufReader::new(reader).lines();
+
+        while let Some(line) = lines.next_line().await? {
+            pb2.println(line);
         }
 
-        let pb = ProgressBar::new_spinner();
-        pb.enable_steady_tick(120);
-        pb.set_style(
-            ProgressStyle::default_spinner()
-                .template("{prefix}{msg} {spinner:.blue} {elapsed:.yellow}"),
-        );
-        pb.set_prefix(&PAPER.to_string());
-        pb.set_message("Dumping...");
-
-        let mut lines = res.lines();
-        while let Some(line) = lines.next().await.transpose()? {
-            pb.println(line);
-        }
-
-        pb.finish_and_clear();
-
-        Ok(())
+        Ok::<_, Error>(())
     });
 
-    let mut res = surf::get(base_url.join("status")?)
-        .header("x-api-key", &agent.api_key)
-        .await
-        .map_err(Error::msg)?;
+    while let Some(frame) = stream.next().await {
+        match frame? {
+            Frame::Stdout(bytes) => {
+                total += io::copy(&mut pb.wrap_read(&bytes[..]), &mut io::stdout())?;
+            }
+            Frame::Stderr(bytes) => {
+                writer.write_all(&bytes).await?;
+            }
+            Frame::Status(code) => {
+                writer.shutdown().await?;
+                handle.await?;
+                pb.finish_and_clear();
 
-    let (total, _) = t1.try_join(t2).await?;
+                match code {
+                    Some(0) => {
+                        eprintln!(
+                            "{}Done in {} ({})",
+                            SPARKLE,
+                            HumanDuration(started.elapsed()),
+                            style(HumanBytes(total as u64)).cyan(),
+                        );
 
-    let body = res.body_string().await.map_err(Error::msg)?;
-    let code = match res.status() {
-        StatusCode::Ok => body.parse::<i32>()?,
-        _ => bail!(body),
-    };
-
-    if code == 0 {
-        eprintln!(
-            "{}Done in {} ({})",
-            SPARKLE,
-            HumanDuration(started.elapsed()),
-            style(HumanBytes(total as u64)).cyan(),
-        )
-        .await;
+                        break;
+                    }
+                    Some(c) => process::exit(c),
+                    _ => bail!("process interrupted"),
+                }
+            }
+        }
     }
 
-    process::exit(code);
+    Ok(())
 }

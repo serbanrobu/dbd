@@ -1,46 +1,56 @@
-use crate::Database;
+use crate::{Connection, Frame};
 use anyhow::{Context, Result};
-use async_std::io;
-use async_std::io::prelude::*;
-use async_std::process::{Child, ChildStdout, Command, Stdio};
-use async_std::task;
+use async_compression::tokio::bufread::GzipEncoder;
+use async_compression::Level;
+use futures::FutureExt;
+use std::process::Stdio;
+use tokio::io::{self, AsyncRead, AsyncReadExt, BufReader};
+use tokio::process::Command;
+use tokio_stream::{Stream, StreamExt};
+use tokio_util::codec::{BytesCodec, FramedRead};
 
-pub type DumpStderr = Box<dyn Read + Send + Sync + Unpin>;
+fn into_frame_stream(
+    reader: impl AsyncRead,
+    op: fn(Vec<u8>) -> Frame,
+) -> impl Stream<Item = io::Result<Frame>> {
+    FramedRead::new(reader, BytesCodec::new()).map(move |r| r.map(|b| b.to_vec()).map(op))
+}
 
 pub fn mysqldump(
-    db: &Database,
+    conn: &Connection,
+    dbname: &str,
     exclude_table_data: Option<Vec<String>>,
-) -> Result<(Child, ChildStdout, DumpStderr)> {
+) -> Result<impl Stream<Item = io::Result<Frame>>> {
     let args = [
         "-h",
-        &db.host,
+        &conn.host,
         "-P",
-        &db.port.to_string(),
+        &conn.port.to_string(),
         "-u",
-        &db.username,
-        &format!("-p{}", db.password),
+        &conn.username,
+        &format!("-p{}", conn.password),
         "-v",
-        &db.dbname,
         "--single-transaction",
+        dbname,
     ];
 
-    let dump_schema = Command::new("mysqldump")
+    let mut dump_schema = Command::new("mysqldump")
         .args(&args)
         .arg("--no-data")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .context("failed to run mysqldump")?;
+        .context("failed to spawn mysqldump")?;
 
     let mut cmd = Command::new("mysqldump");
 
     if let Some(tables) = exclude_table_data {
         for table in tables {
-            cmd.args(&["--ignore-table", &format!("{}.{}", db.dbname, table)]);
+            cmd.args(&["--ignore-table", &format!("{}.{}", dbname, table)]);
         }
     }
 
-    let dump_data = cmd
+    let mut dump_data = cmd
         .args(&args)
         .arg("--no-create-info")
         .stdout(Stdio::piped())
@@ -48,40 +58,61 @@ pub fn mysqldump(
         .spawn()
         .context("failed to run mysqldump")?;
 
-    let mut gzip = Command::new("gzip")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()
-        .context("failed to run gzip")?;
+    let stdout = into_frame_stream(
+        GzipEncoder::with_quality(
+            BufReader::new(
+                dump_schema
+                    .stdout
+                    .take()
+                    .unwrap()
+                    .chain(dump_data.stdout.take().unwrap()),
+            ),
+            Level::Fastest,
+        ),
+        Frame::Stdout,
+    );
 
-    task::spawn(io::copy(
-        dump_schema.stdout.unwrap().chain(dump_data.stdout.unwrap()),
-        gzip.stdin.take().unwrap(),
-    ));
+    let stderr = into_frame_stream(
+        dump_schema
+            .stderr
+            .take()
+            .unwrap()
+            .chain(dump_data.stderr.take().unwrap()),
+        Frame::Stderr,
+    );
 
-    let gzip_stdout = gzip.stdout.take().unwrap();
-    let stderr = dump_schema.stderr.unwrap().chain(dump_data.stderr.unwrap());
+    let status = Box::pin(async move {
+        let status = dump_schema.wait().await?;
 
-    Ok((gzip, gzip_stdout, Box::new(stderr)))
+        if status.code().map_or(true, |c| c != 0) {
+            return Ok(Frame::Status(status.code()));
+        }
+
+        let status = dump_data.wait().await?;
+        Ok(Frame::Status(status.code()))
+    });
+
+    Ok(stdout.merge(stderr).chain(status.into_stream()))
 }
 
 pub fn pg_dump(
-    db: &Database,
+    conn: &Connection,
+    dbname: &str,
     exclude_table_data: Option<Vec<String>>,
-) -> Result<(Child, ChildStdout, DumpStderr)> {
+) -> Result<impl Stream<Item = io::Result<Frame>>> {
     let mut cmd = Command::new("pg_dump");
     cmd.args(&[
         "-d",
-        &db.dbname,
+        dbname,
         "-h",
-        &db.host,
+        &conn.host,
         "-p",
-        &db.port.to_string(),
+        &conn.port.to_string(),
         "-U",
-        &db.username,
+        &conn.username,
         "-v",
         "-Z",
-        "9",
+        "1",
     ]);
 
     if let Some(tables) = exclude_table_data {
@@ -91,14 +122,19 @@ pub fn pg_dump(
     }
 
     let mut child = cmd
-        .env("PGPASSWORD", &db.password)
+        .env("PGPASSWORD", &conn.password)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .context("failed to run pg_dump")?;
+        .context("failed to spawn pg_dump")?;
 
-    let stdout = child.stdout.take().unwrap();
-    let stderr = child.stderr.take().unwrap();
+    let stdout = into_frame_stream(child.stdout.take().unwrap(), Frame::Stdout);
+    let stderr = into_frame_stream(child.stderr.take().unwrap(), Frame::Stderr);
 
-    Ok((child, stdout, Box::new(stderr)))
+    let status = Box::pin(async move {
+        let status = child.wait().await?;
+        Ok(Frame::Status(status.code()))
+    });
+
+    Ok(stdout.merge(stderr).chain(status.into_stream()))
 }

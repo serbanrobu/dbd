@@ -18,7 +18,7 @@ Copy _dbd/Config.toml.example_ file to _$HOME/.dbd.toml_ and configure it.
 
 ```txt
 USAGE:
-    dbd [OPTIONS] <database-id>
+    dbd [OPTIONS] <connection-id>
 
 FLAGS:
     -h, --help       Prints help information
@@ -26,21 +26,28 @@ FLAGS:
 
 OPTIONS:
     -a, --agent-id <agent-id>
-            Agent ID from configuration. Defaults to database ID if the ids
-            match [env: AGENT_ID=]
+        Agent ID from configuration. Defaults to database connection ID if the
+        ids match [env: AGENT_ID=]
 
-    -k, --api-key <api-key>                          Key for accessing agent's
-    API [env: API_KEY]
-    -c, --config <config>                            Config file name. Defaults
-    to $HOME/.dbd.toml [env: CONFIG=]
-        --exclude-table-data <exclude-table-data>
-            Do not dump the specified table data. To specify more than one
-            table to ignore, use comma separator, e.g.
-            --exclude-table-data=table_1,table_2 [env: EXCLUDE_TABLE_DATA=]
-    -u, --url <url>                                  Agent URL [env: URL=]
+    -k, --api-key <api-key>    Key for accessing agent's API [env: API_KEY]
+
+    -c, --config <config>
+        Config file name. Defaults to $HOME/.dbd.toml [env: CONFIG=]
+
+    -d, --dbname <dbname>
+        Database Name. Required if the database connection doesn't have a
+        default dbname [env: DBNAME=]
+
+    -e, --exclude-table-data <exclude-table-data>
+        Do not dump the specified table data. To specify more than one table to
+        ignore, use comma separator, e.g. --exclude-table-data=table_1,table_2
+        [env: EXCLUDE_TABLE_DATA=]
+
+    -u, --url <url>    Agent URL [env: URL=]
 
 ARGS:
-    <database-id>    Database ID configured from the agent [env: DATABASE_ID=]
+    <connection-id>
+        Database connection ID configured from the agent [env: CONNECTION_ID=]
 ```
 
 ## dbd-agent
@@ -69,8 +76,8 @@ FLAGS:
     -V, --version    Prints version information
 
 OPTIONS:
-    -c, --config <config>    Config file name. Defaults to $HOME/.dbd-agent.toml
-    [env: CONFIG=]
+    -c, --config <config>
+        Config file name. Defaults to $HOME/.dbd-agent.toml [env: CONFIG=]
 ```
 
 ## Docker
