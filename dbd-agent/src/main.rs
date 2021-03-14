@@ -1,10 +1,10 @@
 use anyhow::Context;
 use async_std::io::BufReader;
-use dbd_agent::{configure, encode, mysqldump, pg_dump};
+use dbd_agent::{command_exists, configure, encode, mysqldump, pg_dump};
 use dbd_agent::{AuthMiddleware, ConnectionKind, DumpQuery, Opt, Settings};
 use structopt::StructOpt;
 use tide::utils::After;
-use tide::{Body, Error, Request, Response, Result, StatusCode};
+use tide::{log, Body, Error, Request, Response, Result, StatusCode};
 use tokio_util::compat::TokioAsyncReadCompatExt;
 
 async fn dump(req: Request<Settings>) -> Result<Body> {
@@ -34,11 +34,17 @@ async fn dump(req: Request<Settings>) -> Result<Body> {
 
 #[async_std::main]
 async fn main() -> Result<()> {
+    log::start();
+
+    for cmd in &["pg_dump", "mysqldump"] {
+        if !command_exists(cmd) {
+            log::warn!("Command `{}` not found in PATH", cmd);
+        }
+    }
+
     let opt = Opt::from_args();
     let settings = configure(opt.config)?;
     let addr = format!("{}:{}", settings.address, settings.port);
-
-    tide::log::start();
     let mut app = tide::with_state(settings);
 
     app.with(AuthMiddleware);

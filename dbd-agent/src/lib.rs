@@ -5,6 +5,7 @@ mod encode;
 mod frame;
 mod opt;
 mod settings;
+mod util;
 
 pub use auth::AuthMiddleware;
 pub use commands::{mysqldump, pg_dump};
@@ -13,3 +14,4 @@ pub use encode::encode;
 pub use frame::Frame;
 pub use opt::Opt;
 pub use settings::{configure, Connection, ConnectionKind, Settings};
+pub use util::command_exists;
