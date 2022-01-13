@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Settings {
-    pub api_key: String,
+    pub api_keys: HashMap<String, String>,
     pub port: u16,
     pub address: String,
     pub connections: HashMap<String, Connection>,

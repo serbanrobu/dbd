@@ -767,6 +767,7 @@ dependencies = [
  "async-bincode",
  "async-compression",
  "async-std",
+ "chrono",
  "config",
  "dirs",
  "futures",

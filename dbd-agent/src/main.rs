@@ -1,5 +1,6 @@
 use anyhow::Context;
 use async_std::io::BufReader;
+use chrono::Local;
 use dbd_agent::{command_exists, configure, encode, mysqldump, pg_dump};
 use dbd_agent::{AuthMiddleware, ConnectionKind, DumpQuery, Opt, Settings};
 use structopt::StructOpt;
@@ -9,8 +10,8 @@ use tokio_util::compat::TokioAsyncReadCompatExt;
 
 async fn dump(req: Request<Settings>) -> Result<Body> {
     let conn_id = req.param("connection_id")?;
-    let conn = req
-        .state()
+    let state = req.state();
+    let conn = state
         .connections
         .get(conn_id)
         .with_context(|| format!("no database connection {}", conn_id))
@@ -28,6 +29,20 @@ async fn dump(req: Request<Settings>) -> Result<Body> {
         ConnectionKind::Postgres => encode(pg_dump(conn, dbname, exclude_table_data)?),
         ConnectionKind::MySql => encode(mysqldump(conn, dbname, exclude_table_data)?),
     };
+
+    log::info!(
+        "User {} started to dump the {} database on {}",
+        state
+            .api_keys
+            .get(
+                req.header("x-api-key")
+                    .context("No api key is provided")?
+                    .as_str()
+            )
+            .context("Invalid api key")?,
+        dbname,
+        Local::now().format("%b %e, %Y, %H:%M:%S"),
+    );
 
     Ok(Body::from_reader(BufReader::new(read.compat()), None))
 }
