@@ -1,6 +1,9 @@
 address = "127.0.0.1"
 port = 8080
-api_key = "secret"
+
+[api_keys]
+secret_1 = "user_1"
+secret_2 = "user_2"
 
 [connections.conn_1]
 kind = "postgres"
