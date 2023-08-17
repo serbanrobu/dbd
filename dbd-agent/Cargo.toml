@@ -1,6 +1,6 @@
 [package]
 name = "dbd-agent"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["Șerban Robu <serbanrobu@protonmail.com>"]
 edition = "2018"
 
