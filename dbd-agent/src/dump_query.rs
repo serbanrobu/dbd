@@ -11,5 +11,5 @@ where
     D: Deserializer<'de>,
 {
     Ok(Option::<String>::deserialize(deserializer)?
-        .map(|s| s.split(",").map(str::to_owned).collect()))
+        .map(|s| s.split(',').map(str::to_owned).collect()))
 }

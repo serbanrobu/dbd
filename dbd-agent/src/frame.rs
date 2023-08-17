@@ -1,8 +1,9 @@
+use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Frame {
-    Stdout(Vec<u8>),
-    Stderr(Vec<u8>),
+    Stdout(Bytes),
+    Stderr(Bytes),
     Status(Option<i32>),
 }

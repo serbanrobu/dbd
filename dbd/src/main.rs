@@ -6,7 +6,7 @@ use async_std::task;
 use console::style;
 use dbd::emoji::{PAPER, SPARKLE};
 use dbd::{configure, Agent, Opt};
-use dbd_agent::Frame;
+use dbd_agent::{Frame, BUF_SIZE};
 use indicatif::{HumanBytes, HumanDuration, ProgressBar, ProgressStyle};
 use std::time::Instant;
 use std::{io, process};
@@ -31,8 +31,7 @@ async fn main() -> Result<()> {
         ),
         _ => settings
             .as_ref()
-            .map(|s| s.agents.get(&opt.connection_id))
-            .flatten(),
+            .and_then(|s| s.agents.get(&opt.connection_id)),
     };
     let agent = match agent {
         Some(a) => Agent {
@@ -48,7 +47,7 @@ async fn main() -> Result<()> {
     let mut url = agent.url.join(&format!(
         "dump/{}/{}",
         opt.connection_id,
-        opt.dbname.as_ref().map(String::as_str).unwrap_or("")
+        opt.dbname.as_deref().unwrap_or("")
     ))?;
 
     if let Some(ref tables) = opt.exclude_table_data {
@@ -80,7 +79,7 @@ async fn main() -> Result<()> {
             .template("{prefix}{msg} {spinner:.magenta} {bytes:.cyan} ({bytes_per_sec:.dim}) [{elapsed_precise:.yellow}]"),
     );
 
-    let (reader, mut writer) = duplex(1024);
+    let (reader, mut writer) = duplex(BUF_SIZE);
     let pb2 = pb.clone();
     let handle = task::spawn(async move {
         let mut lines = BufReader::new(reader).lines();
@@ -111,7 +110,7 @@ async fn main() -> Result<()> {
                             "{}Done in {} ({})",
                             SPARKLE,
                             HumanDuration(started.elapsed()),
-                            style(HumanBytes(total as u64)).cyan(),
+                            style(HumanBytes(total)).cyan(),
                         );
 
                         break;
