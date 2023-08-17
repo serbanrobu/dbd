@@ -13,6 +13,8 @@
         devShell = pkgs.mkShell {
           buildInputs = with pkgs; [
             mysql
+            openssl
+            pkg-config
             postgresql
             rustup
           ];
