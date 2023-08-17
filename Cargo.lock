@@ -731,7 +731,7 @@ dependencies = [
 
 [[package]]
 name = "dbd"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "async-bincode",
@@ -751,7 +751,7 @@ dependencies = [
 
 [[package]]
 name = "dbd-agent"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "async-bincode",
