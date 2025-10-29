@@ -1,5 +1,8 @@
 # Database Dumper
 
+A fast, minimal Rust-based CLI tool for downloading PostgreSQL and
+MySQL/MariaDB dumps over HTTP.
+
 ## dbd
 
 Client for fetching database dumps
